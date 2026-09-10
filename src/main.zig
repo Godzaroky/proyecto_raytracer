@@ -331,11 +331,10 @@ fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Forma, l
                 continue;
 
             // La dirección del punto a la luz
-            const light_dir = (rl.Vector3{ .x = 0, .y = 1, .z = 0 }).normalize();
-            _ = light_dir;
+            const light_dir = light.Position.subtract(hit.Punto).normalize();
 
             // ¿Cómo sabemos qué tan "bien" nos pega la luz?
-            const diffuse_intensity = 1 * light.Intensity;
+            const diffuse_intensity = @max(0.0, light_dir.dotProduct(hit.Normal)) * light.Intensity;
 
             const diffuse = mat.Color.scale(diffuse_intensity);
 
@@ -345,7 +344,8 @@ fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Forma, l
 
             // ¿Qué tan liso es nuestro objeto?
             // ¿Qué tan intensa y precisa es su relfexión especular?
-            const specular_intensity = 1 * light.Intensity;
+            // Todavia sin especular
+            const specular_intensity = 0 * light.Intensity;
 
             const specular = light.Color.scale(specular_intensity);
 
