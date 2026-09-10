@@ -23,6 +23,9 @@ const block_sz = 100;
 // Color del cielo, es lo que devuelve un rayo que no toca nada
 const sky_color = htmlColor("#a3cdf2");
 
+// Cuanto se despega el rayo de sombra de la superficie que lo origina
+const shadow_bias = 0.01;
+
 pub fn main() !void {
     var alloc = switch (builtin.mode) {
         .Debug, .ReleaseSafe => std.heap.DebugAllocator(.{}).init,
@@ -365,9 +368,19 @@ fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Forma, l
 }
 
 fn obscured(origin: rl.Vector3, light: Light, objects: []const Forma) bool {
-    _ = origin;
-    _ = light;
-    _ = objects;
+    const to_light = light.Position.subtract(origin);
+    const light_distance = @sqrt(to_light.dotProduct(to_light));
+    const light_dir = to_light.normalize();
+
+    // Sin el sesgo el rayo vuelve a topar con la superficie de donde sale
+    const shadow_origin = origin.add(light_dir.scale(shadow_bias));
+
+    for (objects) |object| {
+        const hit = object.intersect(shadow_origin, light_dir) orelse continue;
+
+        // Solo tapa si esta entre el punto y la luz, no detras de la luz
+        if (hit.Distancia < light_distance) return true;
+    }
 
     return false;
 }
