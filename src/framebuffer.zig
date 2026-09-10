@@ -24,6 +24,7 @@ pub const Framebuffer = struct {
         self.color_buff.clearBackground(self.background_color);
         if (self.texture) |texture| {
             rl.unloadTexture(texture);
+            self.texture = null;
         }
     }
 

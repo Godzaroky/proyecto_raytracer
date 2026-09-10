@@ -20,6 +20,9 @@ const height = 900;
 
 const block_sz = 100;
 
+// Color del cielo, es lo que devuelve un rayo que no toca nada
+const sky_color = htmlColor("#a3cdf2");
+
 pub fn main() !void {
     var alloc = switch (builtin.mode) {
         .Debug, .ReleaseSafe => std.heap.DebugAllocator(.{}).init,
@@ -36,7 +39,7 @@ pub fn main() !void {
 
     var threaded: std.Io.Threaded = .init(gpa, .{});
     const io = threaded.io();
-    var framebuffer = Framebuffer.init(width, height, .black, .white);
+    var framebuffer = Framebuffer.init(width, height, sky_color, .white);
 
     rl.initWindow(width, height, "Raytracer!!!");
     rl.setTraceLogLevel(.warning);
@@ -47,50 +50,50 @@ pub fn main() !void {
     var delta: i64 = 1;
 
     const espejo = Material{
-        .Color = V3FromColor(htmlColor("#fff")),
+        .Color = V3FromColor(htmlColor("#eef4ff")),
         .Propiedades = .{
-            .Albedo = 0,
-            .Especular = 1,
-            .Reflectividad = 0.9,
+            .Albedo = 0.35,
+            .Especular = 0.6,
+            .Reflectividad = 0,
             .Transparencia = 0,
         },
-        .Especular = 100,
+        .Especular = 120,
         .Refractive_index = 0,
     };
 
     const vidrio = Material{
-        .Color = V3FromColor(htmlColor("#aaa")),
+        .Color = V3FromColor(htmlColor("#dce8f5")),
         .Propiedades = .{
-            .Albedo = 0,
-            .Especular = 0.5,
-            .Reflectividad = 0.1,
-            .Transparencia = 0.8,
+            .Albedo = 0.4,
+            .Especular = 0.55,
+            .Reflectividad = 0,
+            .Transparencia = 0,
         },
         .Especular = 125,
         .Refractive_index = 1.5,
     };
 
     const diamante = Material{
-        .Color = V3FromColor(htmlColor("#aaa")),
+        .Color = V3FromColor(htmlColor("#e6eef7")),
         .Propiedades = .{
-            .Albedo = 0,
-            .Especular = 0.5,
-            .Reflectividad = 0.1,
-            .Transparencia = 0.8,
+            .Albedo = 0.3,
+            .Especular = 0.7,
+            .Reflectividad = 0,
+            .Transparencia = 0,
         },
-        .Especular = 125,
+        .Especular = 200,
         .Refractive_index = 2.417,
     };
 
     const marmol = Material{
         .Color = V3FromColor(htmlColor("#66664c")),
         .Propiedades = .{
-            .Albedo = 0.4,
-            .Especular = 0.3,
+            .Albedo = 0.75,
+            .Especular = 0.2,
             .Reflectividad = 0,
             .Transparencia = 0,
         },
-        .Especular = 10,
+        .Especular = 20,
         .Refractive_index = 0,
     };
 
@@ -104,14 +107,14 @@ pub fn main() !void {
             .center = .{ .x = 12.5, .y = 0, .z = -60 },
             .radius = 5,
             .material = .{
-                .Color = V3FromColor(htmlColor("#4c1919")),
+                .Color = V3FromColor(htmlColor("#cc2b2b")),
                 .Propiedades = .{
-                    .Albedo = 0.9,
-                    .Especular = 0.1,
+                    .Albedo = 0.8,
+                    .Especular = 0.3,
                     .Reflectividad = 0,
                     .Transparencia = 0,
                 },
-                .Especular = 10,
+                .Especular = 60,
                 .Refractive_index = 0,
             },
         } },
@@ -139,14 +142,14 @@ pub fn main() !void {
 
     const lights = [_]Light{
         .{
-            .Color = V3FromColor(htmlColor("#f00")),
+            .Color = V3FromColor(htmlColor("#fff")),
             .Intensity = 1,
-            .Position = .{ .x = 5, .y = 100, .z = 15 },
+            .Position = .{ .x = -60, .y = 60, .z = 60 },
         },
         .{
             .Color = V3FromColor(htmlColor("#fff")),
-            .Intensity = 1,
-            .Position = .{ .x = 0, .y = 0, .z = -250 },
+            .Intensity = 0.4,
+            .Position = .{ .x = 70, .y = 20, .z = -60 },
         },
     };
 
@@ -205,12 +208,15 @@ fn render(target: *Framebuffer, objects: []const Forma, lights: []const Light, c
     const width_f32: f32 = @floatFromInt(target.width);
     const height_f32: f32 = @floatFromInt(target.height);
 
+    const target_width: usize = @intCast(target.width);
+    const target_height: usize = @intCast(target.height);
+
     const aspect_ratio = width_f32 / height_f32;
     const FOV = std.math.pi / 3.0;
     const perspective_scale = @tan(FOV * 0.5);
 
-    for (0..height) |screen_y| {
-        for (0..width) |screen_x| {
+    for (0..target_height) |screen_y| {
+        for (0..target_width) |screen_x| {
             const x_f32: f32 = @floatFromInt(screen_x);
             const y_f32: f32 = @floatFromInt(screen_y);
 
@@ -296,7 +302,7 @@ fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Forma, l
                 color = color.add(reflect_color.scale(mat.Propiedades.Reflectividad));
             } else {
                 // Refleja el fondo
-                color = color.add(.zero());
+                color = color.add(V3FromColor(sky_color));
             }
         }
 
@@ -316,7 +322,7 @@ fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Forma, l
                 }
             } else {
                 // Refleja el fondo
-                color = color.add(.zero());
+                color = color.add(V3FromColor(sky_color));
             }
         }
 
@@ -349,7 +355,7 @@ fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Forma, l
         }
 
         return color;
-    } else return .zero();
+    } else return V3FromColor(sky_color);
 }
 
 fn obscured(origin: rl.Vector3, light: Light, objects: []const Forma) bool {

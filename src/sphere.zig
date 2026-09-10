@@ -23,8 +23,12 @@ pub const Sphere = struct {
         // const discriminante = b * b - 4.0 * a * c;
         const discriminante = b * b - 4.0 * c;
         if (discriminante > 0) {
-            const solucion = (-b - @sqrt(discriminante)) / 2;
-            // const solucion = (-b + @sqrt(discriminante)) / 2;
+            const raiz = @sqrt(discriminante);
+
+            // La raiz cercana es la que se ve, salvo que quede detras del origen
+            var solucion = (-b - raiz) / 2;
+            if (solucion <= 0) solucion = (-b + raiz) / 2;
+
             if (solucion > 0) {
                 // punto = origin + direccion*escala;
                 const point = origin.add(direction.scale(solucion));
