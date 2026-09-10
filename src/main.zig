@@ -245,6 +245,11 @@ fn render(target: *Framebuffer, objects: []const Forma, lights: []const Light, c
     }
 }
 
+// incident apunta desde la superficie hacia afuera, R = 2(N*I)N - I
+fn reflect(incident: rl.Vector3, normal: rl.Vector3) rl.Vector3 {
+    return normal.scale(2 * incident.dotProduct(normal)).subtract(incident);
+}
+
 fn refract(incident: rl.Vector3, normal: rl.Vector3, refractive_index: f32) ?rl.Vector3 {
     var cosi = incident.dotProduct(normal);
 
@@ -291,7 +296,6 @@ fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Forma, l
 
         // Desde el punto a la cámara
         const view_direction = direction.scale(-1);
-        _ = view_direction;
 
         if (mat.Propiedades.Reflectividad > 0) {
             if (max_recursion > 0) {
@@ -339,13 +343,15 @@ fn cast_ray(origin: rl.Vector3, direction: rl.Vector3, objects: []const Forma, l
             const diffuse = mat.Color.scale(diffuse_intensity);
 
             // Dirección a la que reflejamos la luz
-            const reflection_dir = rl.Vector3{ .x = 0, .y = 1, .z = 0 };
-            _ = reflection_dir;
+            const reflection_dir = reflect(light_dir, hit.Normal);
 
             // ¿Qué tan liso es nuestro objeto?
             // ¿Qué tan intensa y precisa es su relfexión especular?
-            // Todavia sin especular
-            const specular_intensity = 0 * light.Intensity;
+            const specular_intensity = std.math.pow(
+                f32,
+                @max(0.0, reflection_dir.dotProduct(view_direction)),
+                mat.Especular,
+            ) * light.Intensity;
 
             const specular = light.Color.scale(specular_intensity);
 
