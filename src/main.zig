@@ -49,6 +49,13 @@ pub fn main() !void {
     defer rl.closeWindow();
     rl.setTargetFPS(60);
 
+    const pixels = try gpa.alloc(rl.Color, width * height);
+    defer gpa.free(pixels);
+
+    const cpu_count = std.Thread.getCpuCount() catch 1;
+    const threads = try gpa.alloc(std.Thread, @max(1, cpu_count));
+    defer gpa.free(threads);
+
     var last_frame_time = Clock.now(io);
     var delta: i64 = 1;
 
@@ -102,13 +109,24 @@ pub fn main() !void {
 
     const spheres = [_]Forma{
         .{ .Sphere = .{
-            .center = .{ .x = 10, .y = 0, .z = -40 },
-            .radius = 5,
-            .material = espejo,
+            .center = .{ .x = 0, .y = 0, .z = 50 },
+            .radius = 9,
+            .material = vidrio,
         } },
         .{ .Sphere = .{
-            .center = .{ .x = 12.5, .y = 0, .z = -60 },
-            .radius = 5,
+            .center = .{ .x = 0, .y = 0, .z = 26 },
+            .radius = 9,
+            .material = diamante,
+        } },
+        .{ .Sphere = .{
+            .center = .{ .x = 0, .y = 0, .z = 2 },
+            .radius = 9,
+            .material = espejo,
+        } },
+        // La grande que tapa la luz de la de en medio
+        .{ .Sphere = .{
+            .center = .{ .x = -30, .y = 0, .z = -22 },
+            .radius = 16,
             .material = .{
                 .Color = V3FromColor(htmlColor("#cc2b2b")),
                 .Propiedades = .{
@@ -122,24 +140,14 @@ pub fn main() !void {
             },
         } },
         .{ .Sphere = .{
-            .center = .{ .x = 0, .y = 0, .z = 0 },
-            .radius = 5,
-            .material = marmol,
-        } },
-        .{ .Sphere = .{
-            .center = .{ .x = 22, .y = 0, .z = -45 },
-            .radius = 5,
+            .center = .{ .x = 10, .y = 20, .z = 38 },
+            .radius = 7,
             .material = espejo,
         } },
         .{ .Sphere = .{
-            .center = .{ .x = -25, .y = 0, .z = -40 },
-            .radius = 5,
-            .material = vidrio,
-        } },
-        .{ .Sphere = .{
-            .center = .{ .x = -37, .y = 0, .z = -40 },
-            .radius = 5,
-            .material = diamante,
+            .center = .{ .x = 10, .y = -18, .z = 14 },
+            .radius = 7,
+            .material = marmol,
         } },
     };
 
@@ -147,12 +155,12 @@ pub fn main() !void {
         .{
             .Color = V3FromColor(htmlColor("#fff")),
             .Intensity = 1,
-            .Position = .{ .x = -60, .y = 60, .z = 60 },
+            .Position = .{ .x = -60, .y = 12, .z = -90 },
         },
         .{
             .Color = V3FromColor(htmlColor("#fff")),
-            .Intensity = 0.4,
-            .Position = .{ .x = 70, .y = 20, .z = -60 },
+            .Intensity = 0.35,
+            .Position = .{ .x = -80, .y = 20, .z = 80 },
         },
     };
 
@@ -201,33 +209,48 @@ pub fn main() !void {
 
         camera.lookAt(.zero());
 
-        try render(&framebuffer, &spheres, &lights, camera);
+        try render(&framebuffer, &spheres, &lights, camera, pixels, threads);
 
         try framebuffer.swap_buffers();
+
+        if (rl.isKeyPressed(.p)) rl.takeScreenshot("render.png");
     }
 }
 
-fn render(target: *Framebuffer, objects: []const Forma, lights: []const Light, camera: Camera) !void {
-    const width_f32: f32 = @floatFromInt(target.width);
-    const height_f32: f32 = @floatFromInt(target.height);
+// Lo que comparten los hilos que trazan la imagen
+const RenderContext = struct {
+    target_width: usize,
+    target_height: usize,
+    next_row: std.atomic.Value(usize),
+    pixels: []rl.Color,
+    objects: []const Forma,
+    lights: []const Light,
+    camera: Camera,
+};
 
-    const target_width: usize = @intCast(target.width);
-    const target_height: usize = @intCast(target.height);
+// Cada hilo va tomando la siguiente fila libre hasta que se acaban
+fn render_rows(ctx: *RenderContext) void {
+    const width_f32: f32 = @floatFromInt(ctx.target_width);
+    const height_f32: f32 = @floatFromInt(ctx.target_height);
 
     const aspect_ratio = width_f32 / height_f32;
     const FOV = std.math.pi / 3.0;
     const perspective_scale = @tan(FOV * 0.5);
 
-    for (0..target_height) |screen_y| {
-        for (0..target_width) |screen_x| {
+    const camera = ctx.camera;
+
+    while (true) {
+        const screen_y = ctx.next_row.fetchAdd(1, .monotonic);
+        if (screen_y >= ctx.target_height) return;
+
+        const y_f32: f32 = @floatFromInt(screen_y);
+        const y_minus1_to_1 = 1 - (y_f32 * 2) / height_f32;
+        const y_direction = y_minus1_to_1 * perspective_scale;
+
+        for (0..ctx.target_width) |screen_x| {
             const x_f32: f32 = @floatFromInt(screen_x);
-            const y_f32: f32 = @floatFromInt(screen_y);
-
             const x_minus1_to_1 = (x_f32 * 2) / width_f32 - 1;
-            const y_minus1_to_1 = 1 - (y_f32 * 2) / height_f32;
-
             const x_direction = x_minus1_to_1 * aspect_ratio * perspective_scale;
-            const y_direction = y_minus1_to_1 * perspective_scale;
 
             const direction_from_camera = (rl.Vector3{
                 .x = x_direction,
@@ -241,8 +264,44 @@ fn render(target: *Framebuffer, objects: []const Forma, lights: []const Light, c
                 .z = direction_from_camera.x * camera.Right.z + direction_from_camera.y * camera.Up.z + direction_from_camera.z * camera.Forward.z,
             };
 
-            const col = cast_ray(camera.Postition, direction, objects, lights, 5);
-            target.set_current_color(V3ToColor(col));
+            const col = cast_ray(camera.Postition, direction, ctx.objects, ctx.lights, 5);
+            ctx.pixels[screen_y * ctx.target_width + screen_x] = V3ToColor(col);
+        }
+    }
+}
+
+fn render(
+    target: *Framebuffer,
+    objects: []const Forma,
+    lights: []const Light,
+    camera: Camera,
+    pixels: []rl.Color,
+    threads: []std.Thread,
+) !void {
+    const target_width: usize = @intCast(target.width);
+    const target_height: usize = @intCast(target.height);
+
+    var ctx = RenderContext{
+        .target_width = target_width,
+        .target_height = target_height,
+        .next_row = std.atomic.Value(usize).init(0),
+        .pixels = pixels,
+        .objects = objects,
+        .lights = lights,
+        .camera = camera,
+    };
+
+    for (threads) |*thread| {
+        thread.* = try std.Thread.spawn(.{}, render_rows, .{&ctx});
+    }
+    for (threads) |thread| {
+        thread.join();
+    }
+
+    // El volcado al Image queda en un solo hilo porque current_color es estado compartido
+    for (0..target_height) |screen_y| {
+        for (0..target_width) |screen_x| {
+            target.set_current_color(pixels[screen_y * target_width + screen_x]);
             try target.set_pixel(@intCast(screen_x), @intCast(screen_y));
         }
     }
